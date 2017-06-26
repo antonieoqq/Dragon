@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -30,28 +31,80 @@ public class DBState
 
 public class DBStateMachine
 {
-    private Dictionary<string, IParam> _parameters;
+    private Dictionary<string, StateParam> _parameters;
 
-    private interface IParam
+    public enum EParamType
     {
+        Scalar,
+        Integer,
+        Bool,
     }
 
-    private struct ParamFloat : IParam
+    // 为了避免box/unbox，将3种基本类型的参数封装成类
+    private abstract class StateParam
     {
-        public ParamFloat(float v) { ParamValue = v; }
+        public EParamType ParamType { get; protected set; }
+        public abstract bool IsComparable();
+        public abstract bool IsBoolean();
+        public virtual bool CompareWith(EValueComp compMode, float v) { return false; }
+        public virtual bool CompareWith(EValueComp compMode, int v) { return false; }
+        public virtual bool IsTrue() { return false; }
+    }
 
+    private class ParamBase : StateParam
+    {
+        public override sealed bool IsComparable()
+        {
+            switch (ParamType) {
+                case EParamType.Scalar:
+                case EParamType.Integer:
+                    return true;
+                case EParamType.Bool:
+                default:
+                    return false;
+            }
+        }
+
+        public override sealed bool IsBoolean()
+        {
+            switch (ParamType) {
+                case EParamType.Scalar:
+                case EParamType.Integer:
+                    return true;
+                case EParamType.Bool:
+                default:
+                    return false;
+            }
+        }
+    }
+
+    private class ParamFloat : ParamBase
+        {
+        public ParamFloat(float v)
+        {
+            ParamType = EParamType.Scalar;
+            ParamValue = v;
+        }
         public float ParamValue;
     }
 
-    private struct ParamInt : IParam
-    {
-        public ParamInt(int v) { ParamValue = v; }
+    private class ParamInt : ParamBase
+        {
+        public ParamInt(int v)
+        {
+            ParamType = EParamType.Integer;
+            ParamValue = v;
+        }
         public int ParamValue;
     }
 
-    private struct ParamBool : IParam
-    {
-        public ParamBool(bool v) { ParamValue = v; }
+    private class ParamBool : ParamBase
+        {
+        public ParamBool(bool v)
+        {
+            ParamType = EParamType.Bool;
+            ParamValue = v;
+        }
         public bool ParamValue;
     }
 
