@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 
-public enum EValueComp
+public enum ECompMode
 {
     Less,
     LessOrEqual,
@@ -32,6 +32,8 @@ public class DBState
 public class DBStateMachine
 {
     private Dictionary<string, StateParam> _parameters;
+    private Dictionary<string, DBState> _states;
+    private DBState _currentState;
 
     public enum EParamType
     {
@@ -41,18 +43,19 @@ public class DBStateMachine
     }
 
     // 为了避免box/unbox，将3种基本类型的参数封装成类
-    private abstract class StateParam
+    private abstract class StateParamBase
     {
-        public EParamType ParamType { get; protected set; }
         public abstract bool IsComparable();
         public abstract bool IsBoolean();
-        public virtual bool CompareWith(EValueComp compMode, float v) { return false; }
-        public virtual bool CompareWith(EValueComp compMode, int v) { return false; }
-        public virtual bool IsTrue() { return false; }
     }
 
-    private class ParamBase : StateParam
+    private abstract class StateParam : StateParamBase
     {
+        public StateParam(string name, EParamType type) { ParamName = name; ParamType = type; }
+
+        public string ParamName { get; private set; }
+        public EParamType ParamType { get; private set; }
+
         public override sealed bool IsComparable()
         {
             switch (ParamType) {
@@ -76,36 +79,109 @@ public class DBStateMachine
                     return false;
             }
         }
+
+        public virtual bool CompareWith(ECompMode compMode, float v)
+        {
+            if (!IsComparable())
+                Debug.LogWarning(ParamName + " is not comparable!");
+
+            return false;
+        }
+
+        public virtual bool CompareWith(ECompMode compMode, int v)
+        {
+            if (!IsComparable())
+                Debug.LogWarning(ParamName + " is not comparable!");
+
+            return false;
+        }
+
+        public virtual bool IsTrue()
+        {
+            if (IsComparable())
+                Debug.LogWarning(ParamName + " is not a boolean parameter!");
+
+            return false;
+        }
+
+        protected bool CompareFloat(ECompMode compMode, float v1, float v2)
+        {
+            switch (compMode) {
+                case ECompMode.Less: return v1 < v2;
+                case ECompMode.LessOrEqual: return v1 <= v2;
+                case ECompMode.Equal: return v1 == v2;
+                case ECompMode.GreaterOrEqual: return v1 >= v2;
+                case ECompMode.Greater: return v1 > v2;
+                case ECompMode.NotEqual: return v1 != v2;
+                default:
+                    Debug.LogWarning("Compare failed: " + ParamName);
+                    return false;
+            }
+        }
+
+        protected bool CompareInt(ECompMode compMode, int v1, int v2)
+        {
+            switch (compMode) {
+                case ECompMode.Less: return v1 < v2;
+                case ECompMode.LessOrEqual: return v1 <= v2;
+                case ECompMode.Equal: return v1 == v2;
+                case ECompMode.GreaterOrEqual: return v1 >= v2;
+                case ECompMode.Greater: return v1 > v2;
+                case ECompMode.NotEqual: return v1 != v2;
+                default:
+                    Debug.LogWarning("Compare failed: " + ParamName);
+                    return false;
+            }
+        }
     }
 
-    private class ParamFloat : ParamBase
+    private class ParamScalar : StateParam
+    {
+        public ParamScalar(string name, float v) : base(name, EParamType.Scalar)
         {
-        public ParamFloat(float v)
-        {
-            ParamType = EParamType.Scalar;
             ParamValue = v;
         }
         public float ParamValue;
+
+        public override bool CompareWith(ECompMode compMode, float v)
+        {
+            return CompareFloat(compMode, ParamValue, v);
+        }
+
+        public override bool CompareWith(ECompMode compMode, int v)
+        {
+            return CompareInt(compMode , (int)ParamValue, v);
+        }
     }
 
-    private class ParamInt : ParamBase
+    private class ParamInt : StateParam
+    {
+        public ParamInt(string name, int v) : base(name, EParamType.Integer)
         {
-        public ParamInt(int v)
-        {
-            ParamType = EParamType.Integer;
             ParamValue = v;
         }
         public int ParamValue;
+
+        public override bool CompareWith(ECompMode compMode, float v)
+        {
+            return CompareFloat(compMode, ParamValue, v);
+        }
+
+        public override bool CompareWith(ECompMode compMode, int v)
+        {
+            return CompareInt(compMode, ParamValue, v);
+        }
     }
 
-    private class ParamBool : ParamBase
+    private class ParamBool : StateParam
+    {
+        public ParamBool(string name, bool v) : base(name, EParamType.Bool)
         {
-        public ParamBool(bool v)
-        {
-            ParamType = EParamType.Bool;
             ParamValue = v;
         }
         public bool ParamValue;
+
+        public override bool IsTrue() { return ParamValue; }
     }
 
     public bool DoseParamExist(string paramName)
@@ -113,35 +189,70 @@ public class DBStateMachine
         return _parameters.ContainsKey(paramName);
     }
 
-    public void AddNewParam(string paramName, float paramValue)
+    public void AddScalarParam(string paramName, float paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            _parameters.Add(paramName, new ParamFloat(paramValue));
+            _parameters.Add(paramName, new ParamScalar(paramName, paramValue));
             return;
         }
         LogKeyConfliction(paramName);
     }
 
-    public void AddNewParam(string paramName, int paramValue)
+    public void AddIntegerParam(string paramName, int paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            _parameters.Add(paramName, new ParamInt(paramValue));
+            _parameters.Add(paramName, new ParamInt(paramName, paramValue));
             return;
         }
         LogKeyConfliction(paramName);
     }
 
-    public void AddNewParam(string paramName, bool paramValue)
+    public void AddBoolParam(string paramName, bool paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            _parameters.Add(paramName, new ParamBool(paramValue));
+            _parameters.Add(paramName, new ParamBool(paramName, paramValue));
             return;
         }
         LogKeyConfliction(paramName);
+    }
+
+    public bool RemoveParam(string name)
+    {
+        return _parameters.Remove(name);
+    }
+
+    public bool CompareParamWith(string name, ECompMode compMode, float v)
+    {
+        if (DoseParamExist(name))
+            return _parameters[name].CompareWith(compMode, v);
+        LogKeyNotFound(name);
+        return false;
+    }
+
+    public bool CompareParamWith(string name, ECompMode compMode, int v)
+    {
+        if (DoseParamExist(name))
+            return _parameters[name].CompareWith(compMode, v);
+        LogKeyNotFound(name);
+        return false;
+    }
+
+    public bool IsParamTrue(string name)
+    {
+        if (DoseParamExist(name))
+            return _parameters[name].IsTrue();
+        LogKeyNotFound(name);
+        return false;
     }
 
     private void LogKeyConfliction(string paramName)
     {
-        Debug.LogWarning("DB State Machine: state " + paramName + " already exists.");
+        Debug.LogWarning("DB State Machine: parameter already exists!\t----\t" + paramName);
+    }
+
+    private void LogKeyNotFound(string paramName)
+    {
+        Debug.LogWarning("DB State Machine: parameter is not found!\t----\t" + paramName);
+
     }
 }
