@@ -59,6 +59,8 @@ public class PlayerController : MonoBehaviour
         UpdatePosition();
         UpdateFaceDirection();
         UpdateAnimation();
+        Debug.DrawLine((Vector2)transform.position, (Vector2)transform.position + Vector2.right * (_animState.currentTime / _animState.totalTime), Color.blue);
+        //Debug.Log(currDBState.currentTime/ currDBState.totalTime);
 
         BattleManager2D.Instance.PCPos = CenterPos;
     }
@@ -75,10 +77,11 @@ public class PlayerController : MonoBehaviour
         Vector2 p2 = new Vector2(transform.position.x + _BBCollider.size.x / 2, transform.position.y + GameDefine.GroundCheckRadius);
         Vector2 p3 = new Vector2(transform.position.x + _BBCollider.size.x / 2, transform.position.y - GameDefine.GroundCheckRadius);
         Vector2 p4 = new Vector2(transform.position.x - _BBCollider.size.x / 2, transform.position.y - GameDefine.GroundCheckRadius);
-        Debug.DrawLine(p1, p2, Color.cyan);
-        Debug.DrawLine(p2, p3, Color.cyan);
-        Debug.DrawLine(p3, p4, Color.cyan);
-        Debug.DrawLine(p4, p1, Color.cyan);
+        //Debug.DrawLine(p1, p2, Color.cyan);
+        //Debug.DrawLine(p2, p3, Color.cyan);
+        //Debug.DrawLine(p3, p4, Color.cyan);
+        //Debug.DrawLine(p4, p1, Color.cyan);
+        //Debug.DrawLine(transform.position, transform.position + Vector3.down, IsGrounded ? Color.green : Color.red);
 
         var hit = Physics2D.OverlapArea(p1, p3, GameDefine.GroundLayerMask);
 
@@ -86,7 +89,6 @@ public class PlayerController : MonoBehaviour
 
         IsGrounded = hit != null;
         //_rigidBody.gravityScale = IsGrounded ? 2 : 5;
-        Debug.DrawLine(transform.position, transform.position + Vector3.down, IsGrounded ? Color.green : Color.red);
 
     }
 
@@ -165,7 +167,7 @@ public class PlayerController : MonoBehaviour
         else {
             if (!IsRising && _animState.name != "jump_3") {
                 _isJumping = true;
-                Debug.DrawLine(transform.position, (Vector2)transform.position + _rigidBody.velocity);
+                //Debug.DrawLine(transform.position, (Vector2)transform.position + _rigidBody.velocity);
                 _animState = _armatureComponent.animation.FadeIn("jump_3");
             }
         }
@@ -212,7 +214,7 @@ public class PlayerController : MonoBehaviour
 
     void AnimationEventHandler(string type, EventObject eventObject)
     {
-        //Debug.Log(type + " : " + eventObject.animationState.name);
+        Debug.Log(type + " : " + eventObject.animationState.name);
         switch (type) {
             case EventObject.FADE_IN_COMPLETE:
                 if (eventObject.animationState.name == "jump_1") {

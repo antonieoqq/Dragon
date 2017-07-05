@@ -20,6 +20,7 @@ public enum EDBCheckMode
     IsTrue,
 }
 
+//为了减少运行时反射检查类型，采用此枚举进行优化
 public enum EDBParamType
 {
     Scalar,
@@ -32,97 +33,102 @@ public class DBStateMachine
 
     public abstract class DBCondition
     {
-        public DBCondition(string name) { CheckParamName = name; }
-        public string CheckParamName { get; private set; }
+        public EDBParamType CheckParamType { get; protected set; }
     }
 
-    public abstract class DBConditionComparable : DBCondition
+    public class DBConditionScalar : DBCondition
     {
-        public DBConditionComparable(string name) : base(name) { }
+        public EDBCompMode CompMode { get; private set; }
+        public float CompareValue { get; private set; }
 
-        protected bool CompareFloat(EDBCompMode compMode, float v1, float v2)
-        {
-            switch (compMode) {
-                case EDBCompMode.Less: return v1 < v2;
-                case EDBCompMode.LessOrEqual: return v1 <= v2;
-                case EDBCompMode.Equal: return v1 == v2;
-                case EDBCompMode.GreaterOrEqual: return v1 >= v2;
-                case EDBCompMode.Greater: return v1 > v2;
-                case EDBCompMode.NotEqual: return v1 != v2;
-                default:
-                    Debug.LogWarning("Compare failed: " + CheckParamName);
-                    return false;
-            }
-        }
-
-        protected bool CompareInt(EDBCompMode compMode, int v1, int v2)
-        {
-            switch (compMode) {
-                case EDBCompMode.Less: return v1 < v2;
-                case EDBCompMode.LessOrEqual: return v1 <= v2;
-                case EDBCompMode.Equal: return v1 == v2;
-                case EDBCompMode.GreaterOrEqual: return v1 >= v2;
-                case EDBCompMode.Greater: return v1 > v2;
-                case EDBCompMode.NotEqual: return v1 != v2;
-                default:
-                    Debug.LogWarning("Compare failed: " + CheckParamName);
-                    return false;
-            }
-        }
-    }
-
-    public class DBConditionScalar : DBConditionComparable
-    {
-        public DBConditionScalar(string name, EDBCompMode mode, float v) : base(name)
+        public DBConditionScalar(EDBCompMode mode, float v)
         {
             CompMode = mode;
             CompareValue = v;
+            CheckParamType = EDBParamType.Scalar;
         }
-        public EDBCompMode CompMode { get; private set; }
-        public float CompareValue { get; private set; }
     }
 
     public class DBConditionInteger : DBCondition
     {
-        public DBConditionInteger(string name, EDBCompMode mode, int v) : base(name)
+        public EDBCompMode CompMode { get; private set; }
+        public int CompareValue { get; private set; }
+
+        public DBConditionInteger(EDBCompMode mode, int v)
         {
             CompMode = mode;
             CompareValue = v;
+            CheckParamType = EDBParamType.Integer;
         }
-
-        public EDBCompMode CompMode { get; private set; }
-        public int CompareValue { get; private set; }
     }
 
     public class DBConditionBool : DBCondition
     {
-        public DBConditionBool(string name, bool v) : base(name)
+        public bool RequiredValue { get; private set; }
+
+        public DBConditionBool(bool v)
         {
             RequiredValue = v;
+            CheckParamType = EDBParamType.Bool;
         }
-
-        public bool RequiredValue { get; private set; }
     }
 
     public class DBTransition
     {
+        public Dictionary<string, DBCondition> Conditions { get; private set; }
+        public bool HasExitTime;
+        public float ExitTime;
+
         public DBTransition()
         {
-            Conditions = new LinkedList<DBCondition>();
+            Conditions = new Dictionary<string, DBCondition>();
         }
 
-        public string TargetStateName { get; private set; }
-        public LinkedList<DBCondition> Conditions { get; private set; }
+        public void AddScalarCondition(string name, EDBCompMode compMode, float compValue)
+        {
+            if (!Conditions.ContainsKey(name))
+                Conditions.Add(name, new DBConditionScalar(compMode, compValue));
+        }
+
+        public void AddIntegerCondition(string name, EDBCompMode compMode, int compValue)
+        {
+            if (!Conditions.ContainsKey(name))
+                Conditions.Add(name, new DBConditionInteger(compMode, compValue));
+        }
+
+        public void AddBoolCondition(string name, bool compValue)
+        {
+            if (!Conditions.ContainsKey(name))
+                Conditions.Add(name, new DBConditionBool(compValue));
+        }
+
+        public void RemoveCondition(string name)
+        {
+            Conditions.Remove(name);
+        }
     }
 
     public class DBState
     {
+        public Dictionary<string, DBTransition> Transitions { get; private set; }
+        public float Speed = 1;
+
         public DBState()
         {
-            Transitions = new LinkedList<DBTransition>();
+            Transitions = new Dictionary<string, DBTransition>();
         }
 
-        public LinkedList<DBTransition> Transitions { get; private set; }
+        public DBTransition AddTransition(string targetStateName)
+        {
+            var newTrans = new DBTransition();
+            Transitions.Add(targetStateName, newTrans);
+            return newTrans;
+        }
+
+        public void RemoveTransition(string targetStateName)
+        {
+            Transitions.Remove(targetStateName);
+        }
     }
 
     // 为了避免box/unbox，将3种基本类型的参数封装成类
@@ -157,37 +163,81 @@ public class DBStateMachine
         }
     }
 
-    public class ParamScalar : StateParam
+    public class ScalarParam : StateParam
     {
-        public ParamScalar(string name, float v) : base(name, EDBParamType.Scalar)
+        public ScalarParam(string name, float v) : base(name, EDBParamType.Scalar)
         {
             ParamValue = v;
         }
         public float ParamValue;
     }
 
-    public class ParamInt : StateParam
+    public class IntParam : StateParam
     {
-        public ParamInt(string name, int v) : base(name, EDBParamType.Integer)
+        public IntParam(string name, int v) : base(name, EDBParamType.Integer)
         {
             ParamValue = v;
         }
         public int ParamValue;
     }
 
-    public class ParamBool : StateParam
+    public class BoolParam : StateParam
     {
-        public ParamBool(string name, bool v) : base(name, EDBParamType.Bool)
+        public BoolParam(string name, bool v) : base(name, EDBParamType.Bool)
         {
             ParamValue = v;
         }
         public bool ParamValue;
     }
 
+    public string OriginStateName = "";
+    public DBState AnyState { get; private set; }
 
-    private Dictionary<string, StateParam> _parameters;
-    private Dictionary<string, DBState> _states;
-    private DBState _currentState;
+    private DragonBones.Animation _DBAnimation;
+    private DragonBones.AnimationState _DBAnimState;
+
+    private Dictionary<string, StateParam> _parameters = new Dictionary<string, StateParam>();
+    private Dictionary<string, DBState> _states = new Dictionary<string, DBState>();
+    private DBState _currentState = null;
+
+    public DBStateMachine(DragonBones.Animation dbAnim)
+    {
+        AnyState = new DBState();
+        _DBAnimation = dbAnim;
+    }
+
+    public void Update()
+    {
+        if (_states.Count < 0) return;
+
+        if (_currentState == null) {
+            if (OriginStateName.Length > 0 && _states.ContainsKey(OriginStateName)) {
+                _currentState = _states[OriginStateName];
+                _DBAnimation.FadeIn(OriginStateName);
+            }
+            else {
+                Debug.LogError("[DBStateMachine] No origin state!\t----\t" + OriginStateName);
+            }
+        }
+
+        if (_currentState == null) {
+            Debug.LogError("[DBStateMachine] Current state is not valid!");
+            return;
+        }
+
+        var transIter = _currentState.Transitions.GetEnumerator();
+        while (transIter.MoveNext()) {
+            var currTrans = transIter.Current.Value;
+            var condIter = currTrans.Conditions.GetEnumerator();
+            bool isAllPass = true;
+            while (condIter.MoveNext()) {
+                var checkParamName = condIter.Current.Key;
+                var currCond = condIter.Current.Value;
+
+                isAllPass = isAllPass && CheckParameterByCondition(checkParamName, currCond);
+            }
+        }
+    }
 
     public bool DoseParamExist(string paramName)
     {
@@ -202,10 +252,10 @@ public class DBStateMachine
         return null;
     }
 
-    public ParamScalar AddScalarParam(string paramName, float paramValue)
+    public ScalarParam AddScalarParam(string paramName, float paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            var newParam = new ParamScalar(paramName, paramValue);
+            var newParam = new ScalarParam(paramName, paramValue);
             _parameters.Add(paramName, newParam);
             return newParam;
         }
@@ -213,10 +263,10 @@ public class DBStateMachine
         return null;
     }
 
-    public ParamInt AddIntegerParam(string paramName, int paramValue)
+    public IntParam AddIntegerParam(string paramName, int paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            var newParam = new ParamInt(paramName, paramValue);
+            var newParam = new IntParam(paramName, paramValue);
             _parameters.Add(paramName, newParam);
             return newParam;
         }
@@ -224,10 +274,10 @@ public class DBStateMachine
         return null;
     }
 
-    public ParamBool AddBoolParam(string paramName, bool paramValue)
+    public BoolParam AddBoolParam(string paramName, bool paramValue)
     {
         if (!DoseParamExist(paramName)) {
-            var newParam = new ParamBool(paramName, paramValue);
+            var newParam = new BoolParam(paramName, paramValue);
             _parameters.Add(paramName, newParam);
             return newParam;
         }
@@ -240,10 +290,56 @@ public class DBStateMachine
         return _parameters.Remove(name);
     }
 
-    public void AddNewState(string name)
+    public void SetScalarParam(string paramName, float paramValue)
     {
-        if (!_states.ContainsKey(name))
-            _states.Add(name, new DBState());
+        if (DoseParamExist(paramName)) {
+            var currentParam = _parameters[paramName] as ScalarParam;
+            if (currentParam != null) {
+                currentParam.ParamValue = paramValue;
+                return;
+            }
+            Debug.LogError("[DBStateMachine] paramter is not a scalar\t----\t" + paramName);
+        }
+        Debug.LogError("[DBStateMachine] paramter is not found\t----\t" + paramName);
+    }
+
+    public void SetIntegerParam(string paramName, int paramValue)
+    {
+        if (DoseParamExist(paramName)) {
+            var currentParam = _parameters[paramName] as IntParam;
+            if (currentParam != null) {
+                currentParam.ParamValue = paramValue;
+                return;
+            }
+            Debug.LogError("[DBStateMachine] paramter is not an integer\t----\t" + paramName);
+        }
+        Debug.LogError("[DBStateMachine] paramter is not found\t----\t" + paramName);
+    }
+
+    public void SetBoolParam(string paramName, bool paramValue)
+    {
+        if (DoseParamExist(paramName)) {
+            var currentParam = _parameters[paramName] as BoolParam;
+            if (currentParam != null) {
+                currentParam.ParamValue = paramValue;
+                return;
+            }
+            Debug.LogError("[DBStateMachine] paramter is not a boolean\t----\t" + paramName);
+        }
+        Debug.LogError("[DBStateMachine] paramter is not found\t----\t" + paramName);
+    }
+
+    public DBState AddNewState(string name)
+    {
+        DBState newState;
+        if (!_states.ContainsKey(name)) {
+            newState = new DBState();
+            _states.Add(name, newState);
+        }
+        else
+            newState = GetState(name);
+
+        return newState;
     }
 
     public void RemoveState(string name)
@@ -252,21 +348,86 @@ public class DBStateMachine
             _states.Remove(name);
     }
 
-    private DBState GetState(string name)
+    public DBState GetState(string name)
     {
         DBState currState;
         _states.TryGetValue(name, out currState);
         return currState;
     }
 
-    private void LogKeyConfliction(string paramName)
+    protected bool CompareFloat(EDBCompMode compMode, float v1, float v2)
     {
-        Debug.LogWarning("DB State Machine: parameter already exists!\t----\t" + paramName);
+        switch (compMode) {
+            case EDBCompMode.Less: return v1 < v2;
+            case EDBCompMode.LessOrEqual: return v1 <= v2;
+            case EDBCompMode.Equal: return v1 == v2;
+            case EDBCompMode.GreaterOrEqual: return v1 >= v2;
+            case EDBCompMode.Greater: return v1 > v2;
+            case EDBCompMode.NotEqual: return v1 != v2;
+            default:
+                Debug.LogWarning("[DBStateMachine] Compare failed!");
+                return false;
+        }
+    }
+
+    protected bool CompareInt(EDBCompMode compMode, int v1, int v2)
+    {
+        switch (compMode) {
+            case EDBCompMode.Less: return v1 < v2;
+            case EDBCompMode.LessOrEqual: return v1 <= v2;
+            case EDBCompMode.Equal: return v1 == v2;
+            case EDBCompMode.GreaterOrEqual: return v1 >= v2;
+            case EDBCompMode.Greater: return v1 > v2;
+            case EDBCompMode.NotEqual: return v1 != v2;
+            default:
+                Debug.LogWarning("[DBStateMachine] Compare failed!");
+                return false;
+        }
+    }
+
+    private bool CheckParameterByCondition(string paramName, DBCondition condition)
+    {
+        var currParam = GetParam(paramName);
+        if (currParam == null) {
+            Debug.LogError("[DBStateMachine] Parameter is not found: " + paramName);
+            return false;
+        }
+
+        switch (condition.CheckParamType) {
+            case EDBParamType.Scalar:
+                var scalarCond = condition as DBConditionScalar;
+                var scalarParam = currParam as ScalarParam;
+                if (scalarParam != null)
+                    return CompareFloat(scalarCond.CompMode, scalarParam.ParamValue, scalarCond.CompareValue);
+                break;
+            case EDBParamType.Integer:
+                var intCond = condition as DBConditionInteger;
+                var intParam = currParam as IntParam;
+                if (intParam != null)
+                    return CompareInt(intCond.CompMode, intParam.ParamValue, intCond.CompareValue);
+                break;
+            case EDBParamType.Bool:
+                var boolCond = condition as DBConditionBool;
+                var boolParam = currParam as BoolParam;
+                if (boolParam != null)
+                    return boolCond.RequiredValue == boolParam.ParamValue;
+                break;
+            default:
+                break;
+        }
+
+        Debug.LogError("[DBStateMachine] Parameter check failure: parameter type is not matching!\t----\t" + paramName);
+        return false;
+    }
+
+private void LogKeyConfliction(string paramName)
+    {
+        Debug.LogWarning("[DBStateMachine] Parameter already exists!\t----\t" + paramName);
     }
 
     private void LogKeyNotFound(string paramName)
     {
-        Debug.LogWarning("DB State Machine: parameter is not found!\t----\t" + paramName);
+        Debug.LogWarning("[DBStateMachine] Parameter is not found!\t----\t" + paramName);
 
     }
 }

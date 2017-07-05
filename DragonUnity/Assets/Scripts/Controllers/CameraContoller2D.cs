@@ -57,6 +57,6 @@ public class CameraContoller2D : MonoBehaviour
             _validBottomLeft.y = 0;
             _validTopRight.y = 0;
         }
-        Debug.Log(_validBottomLeft.ToString() + "   " + _validTopRight.ToString());
+        //Debug.Log(_validBottomLeft.ToString() + "   " + _validTopRight.ToString());
     }
 }
